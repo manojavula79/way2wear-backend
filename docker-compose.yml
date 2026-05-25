@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL Database ────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: way2wear_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: way2wear
+      POSTGRES_PASSWORD: way2wear123
+      POSTGRES_DB: way2wear_db
+      PGDATA: /data/postgres
+    volumes:
+      - postgres_data:/data/postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U way2wear -d way2wear_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - way2wear_net
+
+  # ── Redis Cache ────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: way2wear_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - way2wear_net
+
+  # ── FastAPI Backend ────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: way2wear_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://way2wear:way2wear123@postgres:5432/way2wear_db
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:4200}
+      DEBUG: ${DEBUG:-false}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - way2wear_net
+    volumes:
+      - ./:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  way2wear_net:
+    driver: bridge
