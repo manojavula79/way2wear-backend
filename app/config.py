@@ -6,6 +6,7 @@ import os
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "Way2Wear"
+    FIREBASE_PROJECT_ID: str = ""
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
