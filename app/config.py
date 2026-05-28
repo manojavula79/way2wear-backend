@@ -51,6 +51,8 @@ class Settings(BaseSettings):
         """Synchronous URL for Alembic migrations"""
         return self.DATABASE_URL.replace("+asyncpg", "")
 
+        FIREBASE_PROJECT_ID: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -58,3 +60,13 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+    # # SMS
+SMS_PROVIDER: str = ""
+FAST2SMS_API_KEY: str = ""
+MSG91_AUTH_KEY: str = ""
+MSG91_SENDER_ID: str = "W2WEAR"
+MSG91_TEMPLATE_ID: str = ""
+TWILIO_ACCOUNT_SID: str = ""
+TWILIO_AUTH_TOKEN: str = ""
+TWILIO_FROM_NUMBER: str = ""
