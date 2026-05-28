@@ -62,6 +62,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
     # # SMS
+FIREBASE_PROJECT_ID: str = ""
 SMS_PROVIDER: str = ""
 FAST2SMS_API_KEY: str = ""
 MSG91_AUTH_KEY: str = ""
