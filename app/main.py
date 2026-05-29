@@ -62,10 +62,10 @@ app = FastAPI(
 
 # ── Middleware ────────────────────────────────
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-
+origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
