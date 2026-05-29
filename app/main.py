@@ -62,7 +62,13 @@ app = FastAPI(
 
 # ── Middleware ────────────────────────────────
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else ["*"]
+# origins = settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS else ["*"]
+origins = [
+    "http://localhost:4200",
+    "http://localhost:8100",
+    "https://way2wear-ai.vercel.app",
+    "https://www.way2wear-ai.vercel.app",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
