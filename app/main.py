@@ -68,6 +68,8 @@ origins = [
     "http://localhost:8100",
     "https://way2wear-ai.vercel.app",
     "https://www.way2wear-ai.vercel.app",
+    "https://way2wear.in",
+    "https://www.way2wear.in"
 ]
 app.add_middleware(
     CORSMiddleware,
