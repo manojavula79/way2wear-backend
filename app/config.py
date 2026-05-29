@@ -7,10 +7,11 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "Way2Wear"
     FIREBASE_PROJECT_ID: str = ""
+    SMS_PROVIDER: str = ""
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
-    SECRET_KEY: str = "change-this-in-production-minimum-32-chars"
+    SECRET_KEY: str = ""
 
     # Server
     HOST: str = "0.0.0.0"
@@ -29,7 +30,7 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 1500
 
     # JWT
-    JWT_SECRET_KEY: str = "jwt-secret-change-in-production"
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
@@ -51,8 +52,6 @@ class Settings(BaseSettings):
     def sync_database_url(self) -> str:
         """Synchronous URL for Alembic migrations"""
         return self.DATABASE_URL.replace("+asyncpg", "")
-
-        FIREBASE_PROJECT_ID: str = ""
 
     class Config:
         env_file = ".env"
