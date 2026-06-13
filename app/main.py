@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import create_tables
 from app.redis_client import get_redis, close_redis
 from app.api.v1.router import api_router
+from app.services.fake_products import load_products_from_db
 
 # ── Logging ───────────────────────────────────
 logging.basicConfig(
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️  Redis unavailable: {e}")
 
     logger.info("✅ Way2Wear API ready")
+    await load_products_from_db()
     yield
 
     await close_redis()
