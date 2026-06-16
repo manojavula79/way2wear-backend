@@ -34,13 +34,13 @@ DB_URL = DB_URL.split("?")[0]
 
 CSV_PATH = os.path.join(os.path.dirname(__file__), "styles.csv")
 
-TARGET_COUNT = 4000   # total products to load
+TARGET_COUNT = 7000   # total products to load
 
 # Per-type quotas — outfit pairing needs MANY tops & bottoms,
 # accessories are optional extras so we cap them low.
 QUOTA = {
-    "top":       2000,
-    "bottom":    1500,
+    "top":       3500,
+    "bottom":    3000,
     "accessory":  500,
 }
 

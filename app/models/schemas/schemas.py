@@ -87,6 +87,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     session_id: Optional[str] = None
     history: Optional[List[dict]] = []
+    profile: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):
