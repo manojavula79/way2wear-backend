@@ -60,9 +60,35 @@ def _profile_block(profile: dict) -> str:
         return "No profile set. Assume unisex, mid-range budget."
     parts = []
     g = profile.get("gender")
+    age = profile.get("age") or profile.get("ageYears")
+
+    # Age decides adult vs kids clothing
+    age_band = None
+    try:
+        if age is not None and str(age).strip() != "":
+            a = int(age)
+            if a < 13:
+                age_band = "KIDS"
+            elif a < 18:
+                age_band = "TEEN"
+            else:
+                age_band = "ADULT"
+    except Exception:
+        age_band = None
+
     if g:
-        who = {"male": "MEN'S clothing only", "female": "WOMEN'S clothing only"}.get(g, "either men's or women's")
+        # Male/female (not men/women)
+        base = {"male": "MALE clothing only", "female": "FEMALE clothing only"}.get(g, "either male or female")
+        if age_band == "KIDS":
+            who = f"KIDS' {('boys' if g == 'male' else 'girls' if g == 'female' else '')} clothing only".replace("  ", " ").strip()
+        elif age_band == "TEEN":
+            who = f"TEEN {base}"
+        else:
+            who = base
         parts.append(f"- Shops for: {who}")
+
+    if age_band:
+        parts.append(f"- Age group: {age_band}" + (f" ({age} years)" if age else ""))
     if profile.get("stylePreference") or profile.get("style_preference"):
         parts.append(f"- Personal style: {profile.get('stylePreference') or profile.get('style_preference')}")
     if profile.get("fitType") or profile.get("fit_type"):
