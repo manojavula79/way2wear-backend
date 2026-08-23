@@ -217,29 +217,54 @@ async def node_classify_style(state: OutfitState) -> OutfitState:
 
 # ── NODE 5 — MATCH 3 OUTFITS FROM CATALOG (top + bottom) ──
 async def node_match_outfits(state: OutfitState) -> OutfitState:
+    """
+    Match 3 outfits: STRICTLY respect profile gender.
+    Prevents women's top paired with men's bottom and vice versa.
+    """
     from app.services.fake_products import find_best_match
 
     occasion = state["intent"].get("occasion", "casual")
-    gender   = state["intent"].get("gender", "unisex")
-    budget   = state["budget"]
+    gender = state["intent"].get("gender", "unisex")  # already overridden by profile
+    budget = state["budget"]
 
     outfits = []
     used_top, used_bottom = [], []
 
     for _ in range(3):  # THREE outfits
+        # STRICT: only allow the requested gender + unisex, NOTHING ELSE
+        allowed_genders = [gender]
+        if gender != "unisex":
+            allowed_genders.append("unisex")  # unisex OK, but not other genders
+
         top = find_best_match(
-            "top", occasion, gender,
+            "top", 
+            occasion, 
+            gender,  # FORCE the gender
             budget.get("top_budget", 3000),
             exclude_ids=used_top,
+            allowed_genders=allowed_genders,  # pass the strict list
         )
         bottom = find_best_match(
-            "bottom", occasion, gender,
+            "bottom", 
+            occasion, 
+            gender,  # FORCE the gender
             budget.get("bottom_budget", 2500),
             color_preference=top.get("color") if top else None,
             exclude_ids=used_bottom,
+            allowed_genders=allowed_genders,  # strict list
         )
+        
         if not top or not bottom:
             continue
+
+        # DOUBLE-CHECK: if the profile forced a gender (male/female), verify results
+        if gender in ("male", "female"):
+            top_ok = top.get("gender") in (gender, "unisex")
+            bottom_ok = bottom.get("gender") in (gender, "unisex")
+            if not (top_ok and bottom_ok):
+                # Mismatch despite the filter — skip this pair
+                continue
+
         used_top.append(top["id"])
         used_bottom.append(bottom["id"])
         outfits.append({"top": top, "bottom": bottom})

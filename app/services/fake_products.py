@@ -98,40 +98,84 @@ async def load_products_from_db() -> None:
 # ── Lookup helpers (same signatures as before) ────────
 
 def find_best_match(
-    product_type: str,
+    item_type: str,
     occasion: str,
     gender: str,
-    max_price: float,
-    color_preference: Optional[str] = None,
-    exclude_ids: Optional[list] = None,
-) -> Optional[dict]:
-    exclude_ids = exclude_ids or []
-    pool = FAKE_PRODUCTS or _SEED
+    max_price: int,
+    color_preference: str = None,
+    exclude_ids: list = None,
+    allowed_genders: list = None,  # NEW: strict gender list
+) -> dict:
+    """
+    Find the best product match from the catalogue.
+    
+    Args:
+        item_type: 'top' / 'bottom' / 'accessory'
+        occasion: 'casual' / 'office' / 'party' / etc.
+        gender: 'male' / 'female' / 'unisex'
+        max_price: budget in rupees
+        color_preference: optional hex or name to match
+        exclude_ids: list of IDs to skip (already used)
+        allowed_genders: NEW - strict list like ['female', 'unisex']. 
+                         If provided, ONLY these genders are acceptable.
+    """
+    if exclude_ids is None:
+        exclude_ids = []
 
-    candidates = [
-        p for p in pool
-        if p["type"] == product_type
-        and (p["gender"] == gender or p["gender"] == "unisex")
-        and p["id"] not in exclude_ids
-    ]
+    candidates = []
+    for p in FAKE_PRODUCTS:
+        # Skip if already used
+        if p["id"] in exclude_ids:
+            continue
+
+        # Type match
+        if p.get("type") != item_type:
+            continue
+
+        # STRICT GENDER: if allowed_genders is specified, ONLY match those
+        if allowed_genders is not None:
+            if p.get("gender") not in allowed_genders:
+                continue
+        else:
+            # Old logic: gender + unisex
+            if p.get("gender") not in (gender, "unisex"):
+                continue
+
+        # Price filter
+        if p.get("price", 0) > max_price:
+            continue
+
+        # Scoring
+        occasions = p.get("occasions", [])
+        occasion_score = 30 if occasion in occasions else 0
+
+        price = p.get("price", 1)
+        price_score = max(0, 20 - abs(price - (max_price * 0.6)) / 100)
+
+        color_score = 0
+        if color_preference:
+            prod_color = p.get("color", "").lower()
+            pref_color = color_preference.lower()
+            if prod_color == pref_color or pref_color in prod_color:
+                color_score = 15
+
+        random_score = __import__("random").randint(0, 10)
+        total_score = occasion_score + price_score + color_score + random_score
+        candidates.append((total_score, p))
+
     if not candidates:
-        candidates = [
-            p for p in pool
-            if p["type"] == product_type and p["id"] not in exclude_ids
-        ]
-    if not candidates:
-        return None
+        # Fallback: if no matches with strict gender, try unisex only
+        if allowed_genders and "unisex" not in allowed_genders:
+            return find_best_match(
+                item_type, occasion, gender, max_price,
+                color_preference, exclude_ids,
+                allowed_genders=["unisex"],  # last resort
+            )
+        return {"id": "FALLBACK", "title": f"No {item_type} found", "price": 0}
 
-    def score(p):
-        s = 0
-        if occasion in (p.get("occasions") or []):              s += 30
-        if max_price and p.get("price", 0) <= max_price:        s += 20
-        if color_preference and color_preference.lower() in (p.get("color", "").lower()): s += 15
-        s += random.randint(0, 8)   # variety so it's not always identical
-        return s
-
-    candidates.sort(key=score, reverse=True)
-    return candidates[0]
+    # Sort by score and return top match
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1]
 
 
 def build_outfit_from_catalog(occasion: str, gender: str, budget: dict) -> list[dict]:

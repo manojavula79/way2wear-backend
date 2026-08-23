@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     ALLOWED_ORIGINS: str = "http://localhost:4200,https://way2wear-ai.vercel.app"
+    RAPID_API_KEY:str = "80aa972d33msh31ff1b4d0ad75e2p147fc5jsn0bbdade22465"
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://way2wear:way2wear123@localhost:5432/way2wear_db"
