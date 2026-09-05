@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "Way2Wear"
     FIREBASE_PROJECT_ID: str = ""
-    SMS_PROVIDER: str = ""
+    SMS_PROVIDER: str = "way2wear-production"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
