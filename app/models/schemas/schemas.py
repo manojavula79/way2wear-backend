@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Any
 from datetime import datetime
 from uuid import UUID
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
 
 # ══════════════════════════════════════════════
@@ -188,3 +190,121 @@ class FeedbackRequest(BaseModel):
     session_id: Optional[str] = None
     message_id: Optional[str] = None
     outfit_data: Optional[dict] = None
+
+class QueryOutfitsRequest(BaseModel):
+    """Request to query curated outfits database (steps 1-3)."""
+    message: str
+    profile: Optional[Dict[str, Any]] = None  # Optional gender, skin_tone override
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "I need a nice outfit for an office party. I'm a woman with fair skin. Budget is 2000.",
+                "profile": {
+                    "gender": "female",
+                    "skin_tone": "fair"
+                }
+            }
+        }
+
+
+class CuratedOutfitData(BaseModel):
+    """Single curated outfit from database."""
+    id: int
+    outfit_text: str
+    occasion: str
+    gender: str
+    skin_tone: str
+    budget_min: int
+    budget_max: int
+    style_tags: Optional[List[str]] = []
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": 42,
+                "outfit_text": "white kurti + light blue palazzo pants + dupatta",
+                "occasion": "office",
+                "gender": "female",
+                "skin_tone": "fair",
+                "budget_min": 800,
+                "budget_max": 2000,
+                "style_tags": ["curated", "ethnic"]
+            }
+        }
+
+
+class QueryOutfitsResponse(BaseModel):
+    """Response from curated outfits query (steps 1-3)."""
+    success: bool
+    intent: Dict[str, Any]  # Raw AI parsing: occasion, gender, skin_tone, budget, mood, description
+    query_params: Dict[str, Any]  # Normalized: occasion, gender, skin_tone, budget
+    curated_outfits: List[Dict[str, Any]]  # Full outfit records from DB
+    count: int  # Number of matching outfits
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "intent": {
+                    "occasion": "office party",
+                    "gender": "female",
+                    "skin_tone": "fair",
+                    "budget": 2000,
+                    "mood": "professional",
+                    "description": "nice outfit, professional"
+                },
+                "query_params": {
+                    "occasion": "office",
+                    "gender": "female",
+                    "skin_tone": "fair",
+                    "budget": 2000
+                },
+                "curated_outfits": [
+                    {
+                        "id": 42,
+                        "outfit_text": "white kurti + light blue palazzo pants + dupatta",
+                        "occasion": "office",
+                        "gender": "female",
+                        "skin_tone": "fair",
+                        "budget_min": 800,
+                        "budget_max": 2000,
+                        "style_tags": ["curated"]
+                    }
+                ],
+                "count": 1
+            }
+        }
+
+
+class ProfileFormResponse(BaseModel):
+    """Response indicating user needs to fill profile form."""
+    needs_form: bool
+    message: str
+    form_fields: Dict[str, Any]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "needs_form": True,
+                "message": "To give you the best recommendations, what's your brother's gender and skin tone preference?",
+                "form_fields": {
+                    "gender": {
+                        "type": "buttons",
+                        "options": ["Male", "Female", "Unisex"],
+                        "required": True
+                    },
+                    "skin_tone": {
+                        "type": "buttons",
+                        "options": ["Fair", "Medium", "Dark"],
+                        "required": False
+                    },
+                    "size": {
+                        "type": "dropdown",
+                        "options": ["XS", "S", "M", "L", "XL", "XXL"],
+                        "required": False
+                    }
+                }
+            }
+        }
+

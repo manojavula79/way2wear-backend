@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, Boolean, Integer, func
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -26,6 +26,9 @@ class User(Base):
     style_preference: Mapped[str] = mapped_column(String(100), default="Minimalist / Modern")
     budget_range:     Mapped[str] = mapped_column(String(50),  default="$200 - $500")
     gender:           Mapped[str] = mapped_column(String(20),  nullable=True)
+    skin_tone =       Column(String(20), nullable=True) 
+    style_preference= Column(String(500), nullable=True)
+    budget_range =    Column(String(100), nullable=True)
     plan:             Mapped[str] = mapped_column(String(20),  default="Free")
 
     # Stats
