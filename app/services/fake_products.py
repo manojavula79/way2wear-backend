@@ -1,53 +1,108 @@
 """
-WAY2WEAR — PRODUCT CATALOG (database-backed)
+WAY2WEAR — PRODUCT CATALOG
 
-Loads products from the Supabase `products` table (populated by
-scripts/load_products.py) into memory once at startup, then serves
-them through the same functions the AI orchestrator already calls:
-    find_best_match(...)
-    build_outfit_from_catalog(...)
-    FAKE_PRODUCTS  (list, kept for backward compatibility)
+Loads real products from the Supabase `products` table into memory
+and exposes deterministic product matching helpers.
 
-If the DB table is empty or unreachable, it falls back to a tiny
-built-in seed list so the app never crashes.
+This module is responsible ONLY for product retrieval/filtering.
+
+It does NOT decide the final outfit styling.
+OpenAI + orchestrator_v8.py handle the actual TOP + BOTTOM pairing.
+
+Important:
+- No random product selection.
+- No shoe/accessory product generation for the AI outfit pipeline.
+- Strict gender filtering.
+- Real products come from Supabase.
 """
 
 import json
 import ssl
 import logging
-import random
 from typing import Optional
 
 import asyncpg
+
 from app.config import settings
 
 logger = logging.getLogger("way2wear")
 
-# In-memory product cache (loaded once)
+
+# ============================================================
+# PRODUCT CACHE
+# ============================================================
+
 FAKE_PRODUCTS: list[dict] = []
 _loaded = False
 
 
-# ── Minimal seed fallback (only if DB empty) ──────────
+# ============================================================
+# FALLBACK PRODUCTS
+# ============================================================
+
 _SEED = [
-    {"id": "S1", "title": "Classic White Shirt", "brand": "Roadster", "type": "top",
-     "gender": "male", "color": "white", "color_hex": "#F5F5F0", "price": 999,
-     "occasions": ["office", "casual", "formal"], "style": ["classic"],
-     "image": None, "url": "#product-S1"},
-    {"id": "S2", "title": "Slim Fit Blue Jeans", "brand": "Levi's", "type": "bottom",
-     "gender": "male", "color": "blue", "color_hex": "#2C4A8C", "price": 1799,
-     "occasions": ["casual", "date"], "style": ["casual"],
-     "image": None, "url": "#product-S2"},
-    {"id": "S3", "title": "Floral Summer Top", "brand": "W", "type": "top",
-     "gender": "female", "color": "pink", "color_hex": "#E8A0A8", "price": 899,
-     "occasions": ["casual", "party"], "style": ["feminine"],
-     "image": None, "url": "#product-S3"},
-    {"id": "S4", "title": "High Waist Trousers", "brand": "Aurelia", "type": "bottom",
-     "gender": "female", "color": "black", "color_hex": "#1A1A1A", "price": 1299,
-     "occasions": ["office", "formal"], "style": ["classic"],
-     "image": None, "url": "#product-S4"},
+    {
+        "id": "S1",
+        "title": "Classic White Shirt",
+        "brand": "Roadster",
+        "type": "top",
+        "gender": "male",
+        "color": "white",
+        "color_hex": "#F5F5F0",
+        "price": 999,
+        "occasions": ["office", "casual", "formal"],
+        "style": ["classic"],
+        "image": None,
+        "url": "#product-S1",
+    },
+    {
+        "id": "S2",
+        "title": "Slim Fit Blue Jeans",
+        "brand": "Levi's",
+        "type": "bottom",
+        "gender": "male",
+        "color": "blue",
+        "color_hex": "#2C4A8C",
+        "price": 1799,
+        "occasions": ["casual", "date"],
+        "style": ["casual"],
+        "image": None,
+        "url": "#product-S2",
+    },
+    {
+        "id": "S3",
+        "title": "Floral Summer Top",
+        "brand": "W",
+        "type": "top",
+        "gender": "female",
+        "color": "pink",
+        "color_hex": "#E8A0A8",
+        "price": 899,
+        "occasions": ["casual", "party"],
+        "style": ["feminine"],
+        "image": None,
+        "url": "#product-S3",
+    },
+    {
+        "id": "S4",
+        "title": "High Waist Trousers",
+        "brand": "Aurelia",
+        "type": "bottom",
+        "gender": "female",
+        "color": "black",
+        "color_hex": "#1A1A1A",
+        "price": 1299,
+        "occasions": ["office", "formal"],
+        "style": ["classic"],
+        "image": None,
+        "url": "#product-S4",
+    },
 ]
 
+
+# ============================================================
+# DATABASE
+# ============================================================
 
 def _ssl_ctx():
     ctx = ssl.create_default_context()
@@ -57,45 +112,124 @@ def _ssl_ctx():
 
 
 async def load_products_from_db() -> None:
-    """Load all products from Supabase into FAKE_PRODUCTS. Call once on startup."""
+    """
+    Load all products from Supabase into the in-memory catalog.
+
+    This should be called once during application startup.
+    """
+
     global FAKE_PRODUCTS, _loaded
 
-    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").split("?")[0]
+    db_url = (
+        settings.DATABASE_URL
+        .replace("postgresql+asyncpg://", "postgresql://")
+        .split("?")[0]
+    )
+
     try:
-        conn = await asyncpg.connect(db_url, ssl=_ssl_ctx(), statement_cache_size=0)
+        conn = await asyncpg.connect(
+            db_url,
+            ssl=_ssl_ctx(),
+            statement_cache_size=0,
+        )
+
         rows = await conn.fetch("SELECT * FROM products")
         await conn.close()
 
         items = []
+
         for r in rows:
-            items.append({
-                "id":        r["id"],
-                "title":     r["title"],
-                "brand":     r["brand"],
-                "type":      r["type"],
-                "gender":    r["gender"],
-                "color":     r["color"],
-                "color_hex": r["color_hex"],
-                "price":     r["price"],
-                "occasions": json.loads(r["occasions"]) if isinstance(r["occasions"], str) else (r["occasions"] or []),
-                "style":     json.loads(r["style"]) if isinstance(r["style"], str) else (r["style"] or []),
-                "image":     r["image"],
-                "url":       r["url"],
-            })
+            items.append(
+                {
+                    "id": r["id"],
+                    "title": r["title"],
+                    "brand": r["brand"],
+                    "type": r["type"],
+                    "gender": r["gender"],
+                    "color": r["color"],
+                    "color_hex": r["color_hex"],
+                    "price": r["price"],
+                    "occasions": (
+                        json.loads(r["occasions"])
+                        if isinstance(r["occasions"], str)
+                        else (r["occasions"] or [])
+                    ),
+                    "style": (
+                        json.loads(r["style"])
+                        if isinstance(r["style"], str)
+                        else (r["style"] or [])
+                    ),
+                    "image": r["image"],
+                    "url": r["url"],
+                }
+            )
 
         if items:
             FAKE_PRODUCTS = items
             _loaded = True
-            logger.info(f"✅ Loaded {len(items)} products from database")
+
+            logger.info(
+                "Loaded %s products from database",
+                len(items),
+            )
         else:
-            FAKE_PRODUCTS = _SEED
-            logger.warning("⚠️  products table empty — using seed fallback")
+            FAKE_PRODUCTS = list(_SEED)
+
+            logger.warning(
+                "products table is empty — using seed products"
+            )
+
     except Exception as e:
-        FAKE_PRODUCTS = _SEED
-        logger.warning(f"⚠️  Could not load products from DB ({e}) — using seed fallback")
+        FAKE_PRODUCTS = list(_SEED)
+
+        logger.warning(
+            "Could not load products from DB (%s) — using seed products",
+            e,
+        )
 
 
-# ── Lookup helpers (same signatures as before) ────────
+# ============================================================
+# NORMALIZATION HELPERS
+# ============================================================
+
+def _normalize(value) -> str:
+    if value is None:
+        return ""
+
+    return str(value).strip().lower()
+
+
+def _contains(value, target) -> bool:
+    value = _normalize(value)
+    target = _normalize(target)
+
+    if not value or not target:
+        return False
+
+    return target in value
+
+
+def _gender_allowed(
+    product_gender: str,
+    requested_gender: str,
+    allowed_genders: Optional[list[str]],
+) -> bool:
+
+    pg = _normalize(product_gender)
+    rg = _normalize(requested_gender)
+
+    if allowed_genders is not None:
+        return pg in {
+            _normalize(g)
+            for g in allowed_genders
+        }
+
+    return pg in {rg, "unisex"}
+
+
+# ============================================================
+# DETERMINISTIC PRODUCT MATCH
+# ============================================================
 
 def find_best_match(
     item_type: str,
@@ -104,95 +238,324 @@ def find_best_match(
     max_price: int,
     color_preference: str = None,
     exclude_ids: list = None,
-    allowed_genders: list = None,  # NEW: strict gender list
+    allowed_genders: list = None,
+    style_preference: str = None,
 ) -> dict:
     """
-    Find the best product match from the catalogue.
-    
-    Args:
-        item_type: 'top' / 'bottom' / 'accessory'
-        occasion: 'casual' / 'office' / 'party' / etc.
-        gender: 'male' / 'female' / 'unisex'
-        max_price: budget in rupees
-        color_preference: optional hex or name to match
-        exclude_ids: list of IDs to skip (already used)
-        allowed_genders: NEW - strict list like ['female', 'unisex']. 
-                         If provided, ONLY these genders are acceptable.
+    Return the highest-scoring REAL product.
+
+    IMPORTANT:
+    There is intentionally NO random score.
+
+    Repeated calls with the same inputs produce deterministic results.
     """
-    if exclude_ids is None:
-        exclude_ids = []
+
+    exclude_ids = exclude_ids or []
 
     candidates = []
-    for p in FAKE_PRODUCTS:
-        # Skip if already used
-        if p["id"] in exclude_ids:
+
+    requested_type = _normalize(item_type)
+    requested_occasion = _normalize(occasion)
+    requested_gender = _normalize(gender)
+    requested_style = _normalize(style_preference)
+
+    try:
+        max_price = int(max_price)
+    except Exception:
+        max_price = 5000
+
+    for product in FAKE_PRODUCTS:
+
+        product_id = str(product.get("id", ""))
+
+        # Already used
+        if product_id in {str(x) for x in exclude_ids}:
             continue
 
-        # Type match
-        if p.get("type") != item_type:
+        # TOP / BOTTOM
+        if _normalize(product.get("type")) != requested_type:
             continue
 
-        # STRICT GENDER: if allowed_genders is specified, ONLY match those
-        if allowed_genders is not None:
-            if p.get("gender") not in allowed_genders:
-                continue
-        else:
-            # Old logic: gender + unisex
-            if p.get("gender") not in (gender, "unisex"):
-                continue
-
-        # Price filter
-        if p.get("price", 0) > max_price:
+        # Gender
+        if not _gender_allowed(
+            product.get("gender"),
+            requested_gender,
+            allowed_genders,
+        ):
             continue
 
-        # Scoring
-        occasions = p.get("occasions", [])
-        occasion_score = 30 if occasion in occasions else 0
+        # Price
+        try:
+            price = float(product.get("price") or 0)
+        except Exception:
+            price = 0
 
-        price = p.get("price", 1)
-        price_score = max(0, 20 - abs(price - (max_price * 0.6)) / 100)
+        if price > max_price:
+            continue
 
-        color_score = 0
+        score = 0.0
+
+        # ----------------------------------------------------
+        # Occasion
+        # ----------------------------------------------------
+
+        occasions = [
+            _normalize(x)
+            for x in (product.get("occasions") or [])
+        ]
+
+        if requested_occasion in occasions:
+            score += 40
+
+        # Related occasion aliases
+        if requested_occasion == "wedding":
+            if "formal" in occasions or "festival" in occasions:
+                score += 15
+
+        elif requested_occasion == "party":
+            if "date" in occasions or "casual" in occasions:
+                score += 8
+
+        elif requested_occasion == "office":
+            if "formal" in occasions:
+                score += 12
+
+        elif requested_occasion == "festival":
+            if "wedding" in occasions or "traditional" in occasions:
+                score += 12
+
+        # ----------------------------------------------------
+        # Style
+        # ----------------------------------------------------
+
+        styles = [
+            _normalize(x)
+            for x in (product.get("style") or [])
+        ]
+
+        if requested_style:
+            if requested_style in styles:
+                score += 25
+
+            if any(
+                requested_style in s or s in requested_style
+                for s in styles
+            ):
+                score += 10
+
+        # ----------------------------------------------------
+        # Color
+        # ----------------------------------------------------
+
+        product_color = _normalize(product.get("color"))
+
         if color_preference:
-            prod_color = p.get("color", "").lower()
-            pref_color = color_preference.lower()
-            if prod_color == pref_color or pref_color in prod_color:
-                color_score = 15
+            preferred = _normalize(color_preference)
 
-        random_score = __import__("random").randint(0, 10)
-        total_score = occasion_score + price_score + color_score + random_score
-        candidates.append((total_score, p))
+            if product_color == preferred:
+                score += 20
+            elif preferred in product_color:
+                score += 10
+
+        # ----------------------------------------------------
+        # Price positioning
+        # ----------------------------------------------------
+
+        # Prefer products that use a reasonable portion of the budget
+        target_price = max_price * 0.65
+
+        if target_price > 0:
+            price_distance = abs(price - target_price)
+
+            price_score = max(
+                0,
+                15 - (price_distance / max(target_price, 1)) * 15,
+            )
+
+            score += price_score
+
+        # ----------------------------------------------------
+        # Stable tie breaker
+        # ----------------------------------------------------
+
+        # Do NOT use random.
+        # Product ID creates deterministic ordering.
+        stable_key = product_id
+
+        candidates.append(
+            (
+                score,
+                stable_key,
+                product,
+            )
+        )
+
+    # --------------------------------------------------------
+    # No candidate
+    # --------------------------------------------------------
 
     if not candidates:
-        # Fallback: if no matches with strict gender, try unisex only
-        if allowed_genders and "unisex" not in allowed_genders:
+
+        # If strict gender was used, allow unisex as last resort
+        if (
+            allowed_genders
+            and "unisex" not in [
+                _normalize(g)
+                for g in allowed_genders
+            ]
+        ):
             return find_best_match(
-                item_type, occasion, gender, max_price,
-                color_preference, exclude_ids,
-                allowed_genders=["unisex"],  # last resort
+                item_type=item_type,
+                occasion=occasion,
+                gender=gender,
+                max_price=max_price,
+                color_preference=color_preference,
+                exclude_ids=exclude_ids,
+                allowed_genders=["unisex"],
+                style_preference=style_preference,
             )
-        return {"id": "FALLBACK", "title": f"No {item_type} found", "price": 0}
 
-    # Sort by score and return top match
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    return candidates[0][1]
+        return {
+            "id": "FALLBACK",
+            "title": f"No {item_type} found",
+            "brand": None,
+            "type": item_type,
+            "gender": gender,
+            "color": None,
+            "color_hex": None,
+            "price": 0,
+            "occasions": [],
+            "style": [],
+            "image": None,
+            "url": None,
+        }
+
+    # Highest score first.
+    # Product ID provides deterministic tie-breaking.
+    candidates.sort(
+        key=lambda x: (-x[0], x[1])
+    )
+
+    return candidates[0][2]
 
 
-def build_outfit_from_catalog(occasion: str, gender: str, budget: dict) -> list[dict]:
+# ============================================================
+# MULTIPLE CANDIDATES
+# ============================================================
+
+def find_candidate_products(
+    item_type: str,
+    occasion: str,
+    gender: str,
+    max_price: int,
+    count: int = 10,
+    color_preference: str = None,
+    style_preference: str = None,
+) -> list[dict]:
+    """
+    Return multiple deterministic real products.
+
+    The AI uses these candidates to make the final styling decision.
+    """
+
+    candidates = []
+
+    used_ids = []
+
+    allowed_genders = [gender]
+
+    if gender != "unisex":
+        allowed_genders.append("unisex")
+
+    for _ in range(count):
+
+        product = find_best_match(
+            item_type=item_type,
+            occasion=occasion,
+            gender=gender,
+            max_price=max_price,
+            color_preference=color_preference,
+            exclude_ids=used_ids,
+            allowed_genders=allowed_genders,
+            style_preference=style_preference,
+        )
+
+        if not product:
+            break
+
+        product_id = str(product.get("id"))
+
+        if product_id == "FALLBACK":
+            break
+
+        if product_id in used_ids:
+            break
+
+        used_ids.append(product_id)
+        candidates.append(product)
+
+    return candidates
+
+
+# ============================================================
+# LEGACY FUNCTION
+# ============================================================
+
+def build_outfit_from_catalog(
+    occasion: str,
+    gender: str,
+    budget: dict,
+) -> list[dict]:
+    """
+    Backward-compatible helper.
+
+    NOTE:
+    The new AI pipeline does NOT use this function.
+
+    It is kept so existing code does not crash.
+    """
+
     outfits = []
-    used_top, used_bottom = [], []
+
+    used_top = []
+    used_bottom = []
 
     for _ in range(2):
-        top = find_best_match("top", occasion, gender,
-                              budget.get("top_budget", 2000), exclude_ids=used_top)
-        bottom = find_best_match("bottom", occasion, gender,
-                                 budget.get("bottom_budget", 2000), exclude_ids=used_bottom,
-                                 color_preference=top["color"] if top else None)
-        accessory = find_best_match("accessory", occasion, gender,
-                                    budget.get("accessory_budget", 2000))
-        if top:    used_top.append(top["id"])
-        if bottom: used_bottom.append(bottom["id"])
-        if top and bottom:
-            outfits.append({"top": top, "bottom": bottom, "accessory": accessory})
+
+        top = find_best_match(
+            item_type="top",
+            occasion=occasion,
+            gender=gender,
+            max_price=budget.get("top_budget", 2000),
+            exclude_ids=used_top,
+        )
+
+        bottom = find_best_match(
+            item_type="bottom",
+            occasion=occasion,
+            gender=gender,
+            max_price=budget.get("bottom_budget", 2000),
+            color_preference=None,
+            exclude_ids=used_bottom,
+        )
+
+        if not top or not bottom:
+            continue
+
+        if top.get("id") == "FALLBACK":
+            continue
+
+        if bottom.get("id") == "FALLBACK":
+            continue
+
+        used_top.append(top["id"])
+        used_bottom.append(bottom["id"])
+
+        outfits.append(
+            {
+                "top": top,
+                "bottom": bottom,
+            }
+        )
 
     return outfits

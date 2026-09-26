@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "Way2Wear"
     FIREBASE_PROJECT_ID: str = ""
-    SMS_PROVIDER: str = "way2wear-production"
+    SMS_PROVIDER: str = ""
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
@@ -40,6 +40,12 @@ class Settings(BaseSettings):
 
     # Amazon
     AMAZON_AFFILIATE_TAG: str = "way2wear-20"
+
+    # AWS
+    AWS_ACCESS_KEY_ID: str=""
+    AWS_SECRET_ACCESS_KEY: str=""
+    AWS_S3_BUCKET: str=""
+    AWS_S3_REGION: str=""
 
     # App Limits
     MAX_SESSIONS_PER_USER: int = 10

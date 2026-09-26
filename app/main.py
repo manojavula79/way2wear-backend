@@ -16,6 +16,10 @@ from app.redis_client import get_redis, close_redis
 from app.api.v1.router import api_router
 from app.services.fake_products import load_products_from_db
 
+from app.services.image_generation_service_v3_q import ImageGenerationServiceV3
+from app.services.refinement_parser_service import RefinementParserService
+from app.api.v1.routes import outfits_v4
+
 # ── Logging ───────────────────────────────────
 logging.basicConfig(
     level=logging.INFO if not settings.DEBUG else logging.DEBUG,
@@ -23,6 +27,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("way2wear")
 
+image_service_v3: ImageGenerationServiceV3 = None
+refinement_parser: RefinementParserService = None
 
 # ── Lifespan (startup / shutdown) ─────────────
 @asynccontextmanager
@@ -44,6 +50,30 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Redis connected")
     except Exception as e:
         logger.warning(f"⚠️  Redis unavailable: {e}")
+
+    global image_service_v3, refinement_parser
+    try:
+        # Initialize Redis for image service
+        redis_client = await get_redis()
+        
+        # TASK 5: Image Generation Service V3
+        image_service_v3 = ImageGenerationServiceV3(redis_client)
+        logger.info("✅ ImageGenerationServiceV3 initialized")
+        logger.info(f"   Model: gpt-image-2.5-sunburst")
+        logger.info(f"   Features: Multi-image, Clothing preservation, Refinements")
+        
+        # TASK 6: Refinement Parser Service
+        refinement_parser = RefinementParserService()
+        logger.info("✅ RefinementParserService initialized")
+        logger.info(f"   Features: Height, Environment, Pose, Lighting, Mood parsing")
+        
+        # Register services to routes
+        outfits_v4.set_services(image_service_v3, refinement_parser)
+        logger.info("✅ Services registered to outfits_v4")
+        
+    except Exception as e:
+        logger.error(f"❌ Error initializing services: {e}")
+        logger.warning("⚠️  Services unavailable - image generation will not work")
 
     logger.info("✅ Way2Wear API ready")
     await load_products_from_db()
@@ -91,7 +121,6 @@ async def log_requests(request: Request, call_next):
     logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration}ms)")
     return response
 
-
 # ── Global exception handler ──────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -100,7 +129,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An unexpected error occurred. Please try again."},
     )
-
 
 # ── Routes ────────────────────────────────────
 app.include_router(api_router)
@@ -114,6 +142,10 @@ async def health_check():
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
+        "services": {
+            "image_generation_v3": "initialized" if image_service_v3 else "not initialized",
+            "refinement_parser": "initialized" if refinement_parser else "not initialized",
+        }
     }
 
 
