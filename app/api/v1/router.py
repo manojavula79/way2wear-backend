@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 from fastapi import APIRouter
-from app.app_global_search.routes.global_search import router as global_search_router
 from app.api.v1.routes import (
     auth,
     chat,
@@ -19,7 +18,6 @@ from app.api.v1.routes import (
 api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth.router)
-# api_router.include_router(global_search_router)
 api_router.include_router(chat_gpt_ans.router)
 # api_router.include_router(chat.router)
 # api_router.include_router(chat_claude_ans.router)
