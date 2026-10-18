@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, DateTime, Boolean, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
+from sqlalchemy import String, Integer, SmallInteger, Text, Boolean, DateTime, func
 
 
 class User(Base):
@@ -30,6 +31,11 @@ class User(Base):
     style_preference= Column(String(500), nullable=True)
     budget_range =    Column(String(100), nullable=True)
     plan:             Mapped[str] = mapped_column(String(20),  default="Free")
+    height_cm:        Mapped[int | None] = mapped_column(Integer, nullable=True)
+    age:              Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    fit_type:         Mapped[str | None] = mapped_column(String(50), nullable=True)
+    avatar_url:       Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan:             Mapped[str] = mapped_column(String(20), default="Free", nullable=False)
 
     # Stats
     total_likes:  Mapped[int] = mapped_column(Integer, default=0)

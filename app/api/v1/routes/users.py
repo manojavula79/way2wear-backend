@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.api.v1.middleware.auth import get_current_user
@@ -12,8 +12,13 @@ from app.models.schemas.schemas import (
 from app.repositories.user_repo import UserRepository
 from typing import List
 import uuid
+from fastapi import UploadFile, File, Request
+from pathlib import Path
 
 router = APIRouter(prefix="/users", tags=["Users"])
+AVATAR_DIR = Path("static/avatars")
+ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 
 # ── Profile ───────────────────────────────────
@@ -123,3 +128,26 @@ async def submit_feedback(
                 data[key] = None
     await repo.create_feedback(current_user.id, data)
     return {"status": "feedback_received"}
+
+@router.post("/me/avatar", response_model=UserProfileResponse)
+async def upload_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ext = ALLOWED_TYPES.get(file.content_type)
+    if not ext:
+        raise HTTPException(status_code=415, detail="Use a JPEG, PNG or WebP image")
+
+    data = await file.read()
+    if len(data) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be under 2MB")
+
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{current_user.id}-{uuid.uuid4().hex[:8]}{ext}"
+    (AVATAR_DIR / filename).write_bytes(data)
+
+    url = f"{str(request.base_url).rstrip('/')}/static/avatars/{filename}"
+    repo = UserRepository(db)
+    return await repo.update_profile(current_user.id, {"avatar_url": url})

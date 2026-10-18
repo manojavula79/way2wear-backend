@@ -19,6 +19,7 @@ from app.services.fake_products import load_products_from_db
 from app.services.image_generation_service_v3_q import ImageGenerationServiceV3
 from app.services.refinement_parser_service import RefinementParserService
 from app.api.v1.routes import outfits_v4
+from fastapi.staticfiles import StaticFiles
 
 # ── Logging ───────────────────────────────────
 logging.basicConfig(
@@ -110,6 +111,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ── Request logging middleware ─────────────────

@@ -36,11 +36,22 @@ class RefreshTokenRequest(BaseModel):
 # USER SCHEMAS
 # ══════════════════════════════════════════════
 
+# class UserProfileUpdate(BaseModel):
+#     full_name: Optional[str] = None
+#     style_preference: Optional[str] = None
+#     budget_range: Optional[str] = None
+#     gender: Optional[str] = None
+
 class UserProfileUpdate(BaseModel):
-    full_name: Optional[str] = None
-    style_preference: Optional[str] = None
-    budget_range: Optional[str] = None
-    gender: Optional[str] = None
+    full_name:        Optional[str] = Field(None, max_length=255)
+    style_preference: Optional[str] = Field(None, max_length=500)
+    budget_range:     Optional[str] = Field(None, max_length=100)
+    gender:           Optional[str] = Field(None, max_length=20)
+    skin_tone:        Optional[str] = Field(None, max_length=20)
+    height_cm:        Optional[int] = Field(None, ge=50, le=272)
+    age:              Optional[int] = Field(None, ge=1, le=120)
+    fit_type:         Optional[str] = Field(None, max_length=50)
+    avatar_url:       Optional[str] = None
 
 
 class UserProfileResponse(BaseModel):
@@ -49,6 +60,12 @@ class UserProfileResponse(BaseModel):
     full_name: Optional[str]
     style_preference: str
     budget_range: str
+    gender: Optional[str]
+    skin_tone: Optional[str]
+    height_cm: Optional[int]
+    age: Optional[int]
+    fit_type: Optional[str]
+    avatar_url: Optional[str]
     plan: str
     total_likes: int
     total_orders: int
