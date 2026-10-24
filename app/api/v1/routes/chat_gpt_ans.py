@@ -52,6 +52,11 @@ router = APIRouter(
 # ============================================================
 # CHAT
 # ============================================================
+
+@router.post(
+    "",
+    response_model=ChatResponse,
+)
 async def _return_form(repo, session, user_message: str, form_response: dict):
     await repo.add_message(
         session_id=session.id, role="user", content=user_message
@@ -68,6 +73,7 @@ async def _return_form(repo, session, user_message: str, form_response: dict):
         outfit_data=form_response,
     )
 
+
 def _other_person_form(person_type: str) -> dict:
     return {
         "needs_form": True,
@@ -83,6 +89,7 @@ def _other_person_form(person_type: str) -> dict:
         },
     }
 
+
 def _self_form() -> dict:
     return {
         "needs_form": True,
@@ -92,12 +99,6 @@ def _self_form() -> dict:
             "gender": {"type": "buttons", "options": ["Male", "Female", "Unisex"], "required": True},
         },
     }
-
-@router.post(
-    "",
-    response_model=ChatResponse,
-)
-
 async def send_message(
     payload: ChatRequest,
     current_user: User = Depends(
