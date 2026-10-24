@@ -103,10 +103,11 @@ class OutfitResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
+    message: str = Field(min_length=1, max_length=2000)
     session_id: Optional[str] = None
     history: Optional[List[dict]] = []
     profile: Optional[dict] = None
+    person_profile: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):

@@ -57,6 +57,48 @@ router = APIRouter(
     "",
     response_model=ChatResponse,
 )
+async def _return_form(repo, session, user_message: str, form_response: dict):
+    await repo.add_message(
+        session_id=session.id, role="user", content=user_message
+    )
+    await repo.add_message(
+        session_id=session.id,
+        role="assistant",
+        content=json.dumps(form_response),
+    )
+    return ChatResponse(
+        session_id=str(session.id),
+        message_id=str(uuid.uuid4()),
+        response=json.dumps(form_response),
+        outfit_data=form_response,
+    )
+
+
+def _other_person_form(person_type: str) -> dict:
+    return {
+        "needs_form": True,
+        "form_type": "other",
+        "message": (
+            f"To give you the best recommendations for your {person_type}, "
+            "please tell me their gender and skin tone preference."
+        ),
+        "form_fields": {
+            "gender": {"type": "buttons", "options": ["Male", "Female", "Unisex"], "required": True},
+            "skin_tone": {"type": "buttons", "options": ["Fair", "Medium", "Dark"], "required": False},
+            "size": {"type": "dropdown", "options": ["XS", "S", "M", "L", "XL", "XXL"], "required": False},
+        },
+    }
+
+
+def _self_form() -> dict:
+    return {
+        "needs_form": True,
+        "form_type": "self",
+        "message": "To give you the best recommendations, please tell me your gender.",
+        "form_fields": {
+            "gender": {"type": "buttons", "options": ["Male", "Female", "Unisex"], "required": True},
+        },
+    }
 async def send_message(
     payload: ChatRequest,
     current_user: User = Depends(
@@ -117,216 +159,53 @@ async def send_message(
                 "Rate limit exceeded."
             ),
         )
-
     # --------------------------------------------------------
-    # PERSON CONTEXT
+    # PERSON CONTEXT + PROFILE + FORM
     # --------------------------------------------------------
+    person_context = detect_person_context(payload.message)
+    is_for_other = person_context["is_for_someone_else"]
 
-    person_context = (
-        detect_person_context(
-            payload.message
-        )
-    )
+    user_profile = payload.profile.copy() if payload.profile else {}
 
-    # --------------------------------------------------------
-    # PROFILE
-    # --------------------------------------------------------
+    # ---------- CASE 1: message is for someone else (first priority) ----------
+    if is_for_other:
+        person_profile = payload.person_profile or {}
 
-    user_profile = (
-        payload.profile.copy()
-        if payload.profile
-        else {}
-    )
-
-    # Fill missing values from account
-    # without overwriting values explicitly
-    # sent by frontend.
-
-    if not user_profile.get(
-        "gender"
-    ):
-        user_profile["gender"] = (
-            current_user.gender
-        )
-
-    if not user_profile.get(
-        "stylePreference"
-    ):
-
-        user_profile[
-            "stylePreference"
-        ] = current_user.style_preference
-
-    if not user_profile.get(
-        "budgetRange"
-    ):
-
-        user_profile[
-            "budgetRange"
-        ] = current_user.budget_range
-
-    # Add remaining account fields
-    # only when available.
-
-    if not user_profile.get(
-        "skinTone"
-    ):
-
-        user_profile[
-            "skinTone"
-        ] = getattr(
-            current_user,
-            "skin_tone",
-            None,
-        )
-
-    # --------------------------------------------------------
-    # PERSON-OTHER FORM
-    # --------------------------------------------------------
-
-    if person_context[
-        "is_for_someone_else"
-    ]:
-
-        intent_state = {
-
-            "user_message":
+        if not person_profile.get("gender"):
+            return await _return_form(
+                repo,
+                session,
                 payload.message,
+                _other_person_form(person_context["person_type"]),
+            )
 
-            "intent": {},
-
-            "is_for_someone_else":
-                True,
-
-            "needs_profile_form":
-                False,
-
-            "query_params": {},
-
-            "curated_outfits": [],
-
-            "user_profile":
-                user_profile,
+        # Form submitted: use the OTHER person's details, not the logged-in user's
+        user_profile = {
+            "gender": person_profile.get("gender"),
+            "skinTone": person_profile.get("skin_tone"),
+            "size": person_profile.get("size"),
+            "budgetRange": (
+                user_profile.get("budgetRange") or current_user.budget_range
+            ),
         }
 
-        try:
+    # ---------- CASE 2: message is for the user themself ----------
+    else:
+        # Fill missing values from the account first
+        if not user_profile.get("gender"):
+            user_profile["gender"] = current_user.gender
+        if not user_profile.get("stylePreference"):
+            user_profile["stylePreference"] = current_user.style_preference
+        if not user_profile.get("budgetRange"):
+            user_profile["budgetRange"] = current_user.budget_range
+        if not user_profile.get("skinTone"):
+            user_profile["skinTone"] = getattr(current_user, "skin_tone", None)
 
-            intent_state = (
-                await node_understand_intent(
-                    intent_state
-                )
+        # Still empty after account fallback → ask
+        if not user_profile.get("gender"):
+            return await _return_form(
+                repo, session, payload.message, _self_form()
             )
-
-        except Exception as e:
-
-            logger.warning(
-                "Could not understand "
-                "person context: %s",
-                e,
-            )
-
-        intent = (
-            intent_state.get(
-                "intent",
-                {},
-            )
-        )
-
-        needs_form = (
-            check_profile_form_needed(
-                intent,
-                True,
-            )
-        )
-
-        if needs_form:
-
-            await repo.add_message(
-                session_id=session.id,
-                role="user",
-                content=payload.message,
-            )
-
-            form_response = {
-
-                "needs_form": True,
-
-                "message": (
-                    "To give you the best "
-                    f"recommendations for your "
-                    f"{person_context['person_type']}, "
-                    "please tell me their gender "
-                    "and skin tone preference."
-                ),
-
-                "form_fields": {
-
-                    "gender": {
-                        "type": "buttons",
-
-                        "options": [
-                            "Male",
-                            "Female",
-                            "Unisex",
-                        ],
-
-                        "required": True,
-                    },
-
-                    "skin_tone": {
-                        "type": "buttons",
-
-                        "options": [
-                            "Fair",
-                            "Medium",
-                            "Dark",
-                        ],
-
-                        "required": False,
-                    },
-
-                    "size": {
-                        "type": "dropdown",
-
-                        "options": [
-                            "XS",
-                            "S",
-                            "M",
-                            "L",
-                            "XL",
-                            "XXL",
-                        ],
-
-                        "required": False,
-                    },
-                },
-            }
-
-            await repo.add_message(
-                session_id=session.id,
-                role="assistant",
-                content=json.dumps(
-                    form_response
-                ),
-            )
-
-            return ChatResponse(
-
-                session_id=str(
-                    session.id
-                ),
-
-                message_id=str(
-                    uuid.uuid4()
-                ),
-
-                response=json.dumps(
-                    form_response
-                ),
-
-                outfit_data=form_response,
-            )
-
     # --------------------------------------------------------
     # SAVE USER MESSAGE
     # --------------------------------------------------------
@@ -350,7 +229,7 @@ async def send_message(
         {
             "role": message.role,
             "content": (
-                message.content[:500]
+                message.content[:2000]
                 if message.content
                 else ""
             ),
